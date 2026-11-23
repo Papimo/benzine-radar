@@ -1,0 +1,35 @@
+name: Prijzen ophalen
+
+# 3× per dag (tijden in UTC; winter = +1 u, zomer = +2 u in NL). GitHub start soms wat later.
+on:
+  schedule:
+    - cron: "0 6 * * *"     # ochtend
+    - cron: "0 11 * * *"    # middag
+    - cron: "30 17 * * *"   # na 18:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Prijzen ophalen (ANWB + carbu, regio Heerlen)
+        run: python -m app.export_static --out data
+      - name: Opslaan
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Prijzen $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git push

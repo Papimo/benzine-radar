@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benzine-radar</title>
+<meta name="theme-color" content="#17181a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23111'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23f5c400' stroke-width='2'/><path d='M16 16 L27 9' stroke='%23f5c400' stroke-width='3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app nomap" id="app">
+  <aside class="panel">
+    <form id="form" class="topbar" autocomplete="off">
+      <header class="brand">
+        <div class="logo" aria-hidden="true"><span></span></div>
+        <div><h1>Benzine-radar</h1><p class="sub">NL · BE · DE <span id="version" class="ver"></span></p></div>
+      </header>
+      <input id="q" name="q" class="q" list="addr" placeholder="Vertrekadres of postcode, bv. Markt 1 Heerlen" required aria-label="Vertrekadres">
+      <datalist id="addr"></datalist>
+      <select id="fuel" aria-label="Brandstof"></select>
+      <div class="minitank" title="Hoe vol is je tank nu?">
+        <span class="mtl">Tank <output id="level_out"></output> → <b id="fill_out"></b></span>
+        <div class="gauge" id="gauge"><input id="level" type="range" min="0" max="100" step="5" value="25" aria-label="Tankniveau in procent"></div>
+      </div>
+      <button type="button" id="gear" class="gear" aria-expanded="false" aria-controls="settings" title="Instellingen">⚙<span id="gear_sum"></span></button>
+      <button type="submit" id="go">Zoek</button>
+
+      <div class="settings" id="settings" hidden>
+        <div class="shead"><b>Instellingen</b><button type="button" id="settings_close" aria-label="Sluiten">✕</button></div>
+        <label class="full">Onderweg naar <span class="opt">(optioneel, bv. werk)</span>
+          <input id="dest" name="dest" list="addr" placeholder="Bestemming: dan zoek ik ook een pomp langs de route">
+        </label>
+        <div class="grp">Rit</div>
+        <label>Max. rijtijd enkele reis <output id="max_min_out">15 min</output>
+          <input id="max_min" type="range" min="5" max="60" step="1" value="15" aria-label="Maximale rijtijd enkele reis in minuten">
+        </label>
+        <div class="grid2">
+          <label>Je tijd is waard (€/u)<input id="time_eur_h" type="number" min="0" max="200" step="1" value="12"></label>
+          <label>Straal (km)<input id="radius_km" type="number" min="5" max="80" step="1"></label>
+        </div>
+        <div class="grp">Auto en tank</div>
+        <label>Auto (verbruik per soort weg)<select id="car"></select></label>
+        <div class="grid2">
+          <label>Verbruik (L/100)<input id="consumption" type="number" min="2" max="30" step="0.1"></label>
+          <label>Tankinhoud (L)<input id="tank_l" type="number" min="5" max="200" step="1"></label>
+        </div>
+        <label class="check"><input id="jerry" type="checkbox"> + jerrycan 15 L</label>
+        <div class="grp">Vergelijk met</div>
+        <div class="grid2">
+          <label>Referentie
+            <select id="reference">
+              <option value="nearest">dichtstbijzijnde pomp</option>
+              <option value="station">★ mijn pomp</option>
+              <option value="local_avg">gemiddelde ≤ 5 km</option>
+              <option value="custom">eigen prijs</option>
+            </select>
+          </label>
+          <label>Eigen prijs (€)<input id="ref_price" type="number" min="0.5" max="4" step="0.001" placeholder="2.099"></label>
+        </div>
+        <p class="hint" id="mine_hint"></p>
+        <label class="check"><input id="show_old" type="checkbox"> Ook prijzen ouder dan 24 u tonen</label>
+        <div class="grp">Tankpas en alarm</div>
+        <label class="full">Korting per merk <span class="opt">(ct/L, bv. "Shell 3, Tango 2")</span>
+          <input id="discounts" placeholder="Merk ct, Merk ct" autocomplete="off"></label>
+        <label class="full">Prijsalarm: melden als een pomp binnen je rijtijd onder deze prijs zit (€)
+          <input id="alarm" type="number" min="0.5" max="4" step="0.001" placeholder="bv. 1.899"></label>
+      </div>
+    </form>
+    <div class="list">
+    <div class="quick" id="quick"><div id="places" class="places"></div><button type="button" id="logopen" class="chip log">📒 Logboek</button></div>
+    <div id="alarmbar" class="alarmbar" hidden></div>
+    <div id="picks" class="picks" hidden></div>
+    <div id="timing" class="timing" hidden></div>
+    <div class="listhead">
+      <div class="sortbar" id="sortbar" role="tablist" hidden>
+        <button data-sort="net" class="on">Meeste besparing</button>
+        <button data-sort="per_min">Slimste rit (€/min)</button>
+        <button data-sort="price">Laagste literprijs</button>
+        <button data-sort="time">Kortste rit</button>
+        <button data-sort="mix">Dichtbij ↔ goedkoop</button>
+        <button data-sort="via" id="viatab" hidden>Onderweg</button>
+      </div>
+      <div id="summary" class="summary"></div>
+    </div>
+    <div class="mix" id="mixbar" hidden>
+      <span>Dichtbij</span>
+      <input type="range" id="mix" min="0" max="100" step="1" value="50" aria-label="Balans tussen kortste afstand en laagste prijs">
+      <span>Goedkoop</span>
+    </div>
+    <div id="results" class="results"></div>
+    <section id="trip" class="trip" hidden></section>
+    <footer class="foot" id="foot"></footer>
+    </div>
+  </aside>
+  <dialog id="logbook" class="logbook"></dialog>
+  <main class="mapwrap"><div id="map"></div><button type="button" id="closemap" class="closemap">✕ Kaart sluiten</button></main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+<script>window.BR_STATIC = 1;</script>
+<script src="static-api.js"></script>
+<script src="mapstyle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
