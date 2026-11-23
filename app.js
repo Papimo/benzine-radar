@@ -516,9 +516,28 @@
 
   function paintMaxMin() { $("#max_min_out").textContent = `${$("#max_min").value} min`; if (cfg) paintMine(); }
 
+  // Hoe vers zijn de prijzen? Groen < 8 u, geel < 16 u, rood ouder. GitHub-versie: ook volgende ophaalronde.
+  const RUNS_UTC = [[6, 0], [11, 0], [17, 30]];   // = cron in deploy/site/prices.yml
+  function paintFresh(h) {
+    const t = h.generated_at || Math.max(0, ...Object.values(h.sources || {}));
+    const el = $("#fresh");
+    if (!t) { el.hidden = false; el.className = "fresh old"; el.textContent = "Nog geen prijzen opgehaald"; return; }
+    const age = (Date.now() / 1000 - t) / 3600, when = new Date(t * 1000);
+    let next = "";
+    if (h.generated_at) {
+      const now = new Date(), cand = [0, 1].flatMap((d) => RUNS_UTC.map(([hh, mm]) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + d, hh, mm)));
+      const n = cand.find((x) => x > now.getTime() + 60000);
+      if (n) next = ` · volgende ronde ± ${new Date(n).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+    el.className = "fresh " + (age < 8 ? "ok" : age < 16 ? "mid" : "old");
+    el.innerHTML = `<i></i>Prijzen opgehaald <b>${ago(t)}</b> (${when.toLocaleString("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" })})${next}`;
+    el.title = "Per pomp staat in het detail wanneer die prijs voor het laatst is bijgewerkt.";
+    el.hidden = false;
+  }
   async function health() {
     try {
       const h = await (await fetch("/api/health")).json();
+      paintFresh(h);
       const src = Object.entries(h.sources).map(([s, t]) => `${s}: ${ago(t)}`).join(" · ") || "nog geen prijzen opgehaald";
       const n = Object.entries(h.stations_with_price).map(([c, k]) => `${c} ${k}`).join(" · ");
       $("#foot").innerHTML = (h.generated_at ? `Prijzen opgehaald door GitHub ${ago(h.generated_at)} (3× per dag)<br>` : "") + `Bronnen — ${esc(src)}<br>Pompen met prijs — ${esc(n || "0")}` +
@@ -549,7 +568,7 @@
       if (!r.ok) throw new Error(data.detail?.[0]?.msg || data.detail || data.error || r.statusText);
       remember($("#q").value.trim()); remember($("#dest").value.trim()); fillAddr([]);
       store.set("last_result", { t: Date.now(), data });
-      applyDiscounts(data); last = data; lastRun = Date.now(); render(); checkAlarm(); loadTiming();
+      applyDiscounts(data); last = data; lastRun = Date.now(); render(); checkAlarm(); loadTiming(); health();
     } catch (e) {
       const saved = store.get("last_result");
       if (saved && (!navigator.onLine || e instanceof TypeError)) {   // offline: laatste lijst tonen

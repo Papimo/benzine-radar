@@ -1,7 +1,7 @@
 // Service worker (alleen statische versie): app werkt offline met de laatst opgehaalde prijzen.
 // data/*.json: eerst netwerk, anders cache · eigen bestanden: cache + op de achtergrond verversen ·
 // bibliotheken/lettertypen van CDN: cache · routes/adressen/kaarttegels: altijd live (niet gecachet).
-const CACHE = "br-v1.1.0";
+const CACHE = "br-v1.1.1";
 const SHELL = ["./", "index.html", "style.css", "app.js", "mapstyle.js", "static-api.js", "manifest.webmanifest", "icon.svg", "data/prices.json", "data/stats.json"];
 const CDN = ["unpkg.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 
